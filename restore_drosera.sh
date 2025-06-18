@@ -568,7 +568,7 @@ EOF
     apply_success=false
     print_color $YELLOW "Применение конфигурации Cadet роли..."
     for attempt in 1 2 3; do
-        if DROSERA_PRIVATE_KEY=$PRIVATE_KEY /root/.drosera/bin/drosera apply --eth-rpc-url $RPC_URL >/dev/null 2>&1; then
+        if DROSERA_PRIVATE_KEY=$PRIVATE_KEY /root/.drosera/bin/drosera apply --eth-rpc-url $RPC_URL --yes; then
             apply_success=true
             break
         else
@@ -615,7 +615,7 @@ else
     apply_success=false
     print_color $YELLOW "Применение конфигурации Default трапа..."
     for attempt in 1 2 3; do
-        if DROSERA_PRIVATE_KEY=$PRIVATE_KEY /root/.drosera/bin/drosera apply --eth-rpc-url $RPC_URL >/dev/null 2>&1; then
+        if DROSERA_PRIVATE_KEY=$PRIVATE_KEY /root/.drosera/bin/drosera apply --eth-rpc-url $RPC_URL --yes; then
             apply_success=true
             break
         else
