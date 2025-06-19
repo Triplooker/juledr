@@ -506,37 +506,140 @@ source /root/.bashrc 2>/dev/null || true
 print_color $YELLOW "Установка зависимостей трапа..."
 /root/.bun/bin/bun install >/dev/null 2>&1
 /root/.foundry/bin/forge build >/dev/null 2>&1
-check_status "Компиляция трапа"
+check_status "Компиляция трапа" # This initial build compiles template contracts
 
-# Создание конфигурации drosera.toml
-print_color $YELLOW "Настройка файла конфигурации drosera.toml..."
+# Конфигурация и применение трапа в зависимости от SETUP_CADET
+if [ "$SETUP_CADET" = true ]; then
+    print_header "НАСТРОЙКА CADET РОЛИ (ТРАП)" # Modified header to be more specific
+    cd ~/my-drosera-trap # Ensure correct directory
 
-# Добавляем конфигурацию в конец файла
-cat >> drosera.toml << EOF
+    # Создание Trap.sol для Cadet роли
+    cat > src/Trap.sol << EOF
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.20;
 
-private_trap = true
-whitelist = ["$OPERATOR_ADDRESS"]
-address = "$TRAP_ADDRESS"
+import {ITrap} from "drosera-contracts/interfaces/ITrap.sol";
+
+interface IMockResponse {
+   function isActive() external view returns (bool);
+}
+
+contract Trap is ITrap {
+   address public constant RESPONSE_CONTRACT = 0x4608Afa7f277C8E0BE232232265850d1cDeB600E;
+   string constant discordName = "$DISCORD_USERNAME";
+
+   function collect() external view returns (bytes memory) {
+       bool active = IMockResponse(RESPONSE_CONTRACT).isActive();
+       return abi.encode(active, discordName);
+   }
+
+   function shouldRespond(bytes[] calldata data) external pure returns (bool, bytes memory) {
+       (bool active, string memory name) = abi.decode(data[0], (bool, string));
+
+       if (!active || bytes(name).length == 0) {
+           return (false, bytes(""));
+       }
+       return (true, abi.encode(name));
+   }
+}
 EOF
+    check_status "Создание src/Trap.sol для Cadet роли"
 
-check_status "Настройка drosera.toml"
+    print_color $YELLOW "Конфигурирование drosera.toml для Cadet роли..."
+    # Modify drosera.toml (from template) for Cadet
+    sed -i 's|^path = .*|path = "out/Trap.sol/Trap.json"|' drosera.toml
+    sed -i 's|^response_contract = .*|response_contract = "0x4608Afa7f277C8E0BE232232265850d1cDeB600E"|' drosera.toml
+    sed -i 's|^response_function = .*|response_function = "respondWithDiscordName(string)"|' drosera.toml
+    sed -i 's|^whitelist = .*|whitelist = ["'$OPERATOR_ADDRESS'"]|' drosera.toml
 
-# Применение конфигурации трапа
-print_color $YELLOW "Применение конфигурации трапа..."
-for attempt in 1 2 3; do
-    if DROSERA_PRIVATE_KEY=$PRIVATE_KEY /root/.drosera/bin/drosera apply --eth-rpc-url $RPC_URL >/dev/null 2>&1; then
-        break
-    else
-        if [ $attempt -eq 3 ]; then
-            print_color $YELLOW "Предупреждение: не удалось применить конфигурацию трапа"
-            print_color $YELLOW "Возможно, трап уже настроен или есть проблемы с RPC"
-            break
-        fi
-        print_color $YELLOW "Повторная попытка применения конфигурации трапа..."
-        sleep 10
+    # Ensure global trap address is configured for `drosera apply`
+    if ! grep -q "^address = \"$TRAP_ADDRESS\"" drosera.toml; then
+        echo "" >> drosera.toml # ensure newline
+        echo "address = \"$TRAP_ADDRESS\"" >> drosera.toml
     fi
-done
-check_status "Применение конфигурации трапа"
+    check_status "Конфигурация drosera.toml для Cadet роли"
+
+    # Компиляция нового Trap.sol и применение
+    source /root/.bashrc 2>/dev/null || true
+    print_color $YELLOW "Компиляция Cadet Trap.sol..."
+    /root/.foundry/bin/forge build >/dev/null 2>&1
+    check_status "Компиляция Cadet Trap.sol"
+
+    apply_success=false
+    print_color $YELLOW "Применение конфигурации Cadet роли..."
+    for attempt in 1 2 3; do
+        if echo "ofc" | DROSERA_PRIVATE_KEY=$PRIVATE_KEY /root/.drosera/bin/drosera apply --eth-rpc-url $RPC_URL; then
+            apply_success=true
+            break
+        else
+            if [ $attempt -eq 3 ]; then
+                print_color $RED "✗ Не удалось применить конфигурацию Cadet роли после 3 попыток."
+                # apply_success remains false
+                break
+            fi
+            print_color $YELLOW "Повторная попытка применения конфигурации Cadet роли ($attempt/3)..."
+            sleep 10
+        fi
+    done
+
+    if [ "$apply_success" = true ]; then
+        true # Sets $? to 0 for check_status
+        check_status "Применение конфигурации Cadet роли"
+    else
+        print_color $RED "✗ КРИТИЧЕСКАЯ ОШИБКА: Не удалось применить конфигурацию трапа (Cadet) после 3 попыток."
+        print_color $RED "✗ Пожалуйста, проверьте вывод команды выше, настройки RPC, приватный ключ и адрес трапа."
+        print_color $RED "✗ Выполнение скрипта будет остановлено."
+        exit 1
+    fi
+else
+    print_header "НАСТРОЙКА DEFAULT (HELLOWORLD) ТРАПА"
+    cd ~/my-drosera-trap # Ensure correct directory
+
+    # src/HelloWorldTrap.sol is used by default from template.
+    print_color $YELLOW "Конфигурирование drosera.toml для Default трапа..."
+    # Path, response_contract, response_function are already set for HelloWorld in template's drosera.toml.
+    # We only need to set the whitelist and ensure TRAP_ADDRESS is configured.
+    sed -i 's|^whitelist = .*|whitelist = ["'$OPERATOR_ADDRESS'"]|' drosera.toml
+
+    if ! grep -q "^address = \"$TRAP_ADDRESS\"" drosera.toml; then
+        echo "" >> drosera.toml
+        echo "address = \"$TRAP_ADDRESS\"" >> drosera.toml
+    fi
+    check_status "Конфигурация drosera.toml для Default трапа"
+
+    # Compile (HelloWorldTrap should be built by the previous build, but an explicit build here is safer)
+    source /root/.bashrc 2>/dev/null || true
+    print_color $YELLOW "Компиляция Default (HelloWorld) Trap.sol..."
+    /root/.foundry/bin/forge build >/dev/null 2>&1
+    check_status "Компиляция Default Trap.sol"
+
+    apply_success=false
+    print_color $YELLOW "Применение конфигурации Default трапа..."
+    for attempt in 1 2 3; do
+        if echo "ofc" | DROSERA_PRIVATE_KEY=$PRIVATE_KEY /root/.drosera/bin/drosera apply --eth-rpc-url $RPC_URL; then
+            apply_success=true
+            break
+        else
+            if [ $attempt -eq 3 ]; then
+                print_color $RED "✗ Не удалось применить конфигурацию Default трапа после 3 попыток."
+                # apply_success remains false
+                break
+            fi
+            print_color $YELLOW "Повторная попытка применения конфигурации Default трапа ($attempt/3)..."
+            sleep 10
+        fi
+    done
+
+    if [ "$apply_success" = true ]; then
+        true # Sets $? to 0 for check_status
+        check_status "Применение конфигурации Default трапа"
+    else
+        print_color $RED "✗ КРИТИЧЕСКАЯ ОШИБКА: Не удалось применить конфигурацию трапа (Default) после 3 попыток."
+        print_color $RED "✗ Пожалуйста, проверьте вывод команды выше, настройки RPC, приватный ключ и адрес трапа."
+        print_color $RED "✗ Выполнение скрипта будет остановлено."
+        exit 1
+    fi
+fi
 
 # Установка оператора
 print_header "УСТАНОВКА ОПЕРАТОРА"
@@ -632,68 +735,6 @@ volumes:
 EOF
 
 check_status "Создание конфигурационных файлов Docker"
-
-# Настройка Cadet роли если требуется
-if [ "$SETUP_CADET" = true ]; then
-    print_header "НАСТРОЙКА CADET РОЛИ"
-    
-    cd ~/my-drosera-trap
-    
-    # Создание Trap.sol для Cadet роли
-    cat > src/Trap.sol << EOF
-// SPDX-License-Identifier: MIT
-pragma solidity ^0.8.20;
-
-import {ITrap} from "drosera-contracts/interfaces/ITrap.sol";
-
-interface IMockResponse {
-    function isActive() external view returns (bool);
-}
-
-contract Trap is ITrap {
-    address public constant RESPONSE_CONTRACT = 0x4608Afa7f277C8E0BE232232265850d1cDeB600E;
-    string constant discordName = "$DISCORD_USERNAME";
-
-    function collect() external view returns (bytes memory) {
-        bool active = IMockResponse(RESPONSE_CONTRACT).isActive();
-        return abi.encode(active, discordName);
-    }
-
-    function shouldRespond(bytes[] calldata data) external pure returns (bool, bytes memory) {
-        (bool active, string memory name) = abi.decode(data[0], (bool, string));
-        
-        if (!active || bytes(name).length == 0) {
-            return (false, bytes(""));
-        }
-        return (true, abi.encode(name));
-    }
-}
-EOF
-
-    # Обновление drosera.toml для Cadet
-    sed -i 's|path = "out/.*"|path = "out/Trap.sol/Trap.json"|' drosera.toml
-    sed -i 's|response_contract = ".*"|response_contract = "0x4608Afa7f277C8E0BE232232265850d1cDeB600E"|' drosera.toml
-    sed -i 's|response_function = ".*"|response_function = "respondWithDiscordName(string)"|' drosera.toml
-    
-    # Компиляция и развертывание
-    source /root/.bashrc 2>/dev/null || true
-    /root/.foundry/bin/forge build >/dev/null 2>&1
-    
-    print_color $YELLOW "Применение конфигурации Cadet роли..."
-    for attempt in 1 2 3; do
-        if DROSERA_PRIVATE_KEY=$PRIVATE_KEY /root/.drosera/bin/drosera apply --eth-rpc-url $RPC_URL >/dev/null 2>&1; then
-            break
-        else
-            if [ $attempt -eq 3 ]; then
-                print_color $YELLOW "Предупреждение: не удалось применить конфигурацию Cadet роли"
-                break
-            fi
-            print_color $YELLOW "Повторная попытка применения конфигурации Cadet роли..."
-            sleep 10
-        fi
-    done
-    check_status "Настройка Cadet роли"
-fi
 
 # Запуск ноды
 print_header "ЗАПУСК НОДЫ"
