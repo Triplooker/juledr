@@ -586,9 +586,10 @@ EOF
         true # Sets $? to 0 for check_status
         check_status "Применение конфигурации Cadet роли"
     else
-        false # Sets $? to 1 for check_status
-        check_status "Применение конфигурации Cadet роли (НЕ УДАЛОСЬ)"
-        # The script will exit here if check_status is called with $? != 0 due to its internal `exit 1`.
+        print_color $RED "✗ КРИТИЧЕСКАЯ ОШИБКА: Не удалось применить конфигурацию трапа (Cadet) после 3 попыток."
+        print_color $RED "✗ Пожалуйста, проверьте вывод команды выше, настройки RPC, приватный ключ и адрес трапа."
+        print_color $RED "✗ Выполнение скрипта будет остановлено."
+        exit 1
     fi
 else
     print_header "НАСТРОЙКА DEFAULT (HELLOWORLD) ТРАПА"
@@ -633,9 +634,10 @@ else
         true # Sets $? to 0 for check_status
         check_status "Применение конфигурации Default трапа"
     else
-        false # Sets $? to 1 for check_status
-        check_status "Применение конфигурации Default трапа (НЕ УДАЛОСЬ)"
-        # The script will exit here if check_status is called with $? != 0 due to its internal `exit 1`.
+        print_color $RED "✗ КРИТИЧЕСКАЯ ОШИБКА: Не удалось применить конфигурацию трапа (Default) после 3 попыток."
+        print_color $RED "✗ Пожалуйста, проверьте вывод команды выше, настройки RPC, приватный ключ и адрес трапа."
+        print_color $RED "✗ Выполнение скрипта будет остановлено."
+        exit 1
     fi
 fi
 
